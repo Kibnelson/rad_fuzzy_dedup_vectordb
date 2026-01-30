@@ -1,0 +1,51 @@
+version: "3.9"
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: milvus-etcd
+    command: [ "etcd", "-advertise-client-urls", "http://0.0.0.0:2379", "-listen-client-urls", "http://0.0.0.0:2379", "-listen-peer-urls", "http://0.0.0.0:2380", "-initial-advertise-peer-urls", "http://0.0.0.0:2380", "-initial-cluster", "default=http://0.0.0.0:2380", "-initial-cluster-state", "new", "-initial-cluster-token", "milvus-etcd" ] #volumes: [ "./volumes/etcd:/etcd" ]
+    volumes:
+      - /home/nelson/rad_workspace/milvus/etcd:/etcd # <-- FIXED
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+    container_name: milvus-minio
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: [ "server", "/data", "--console-address", ":9001" ] #volumes: [ "./volumes/minio:/data" ]
+    volumes:
+      - /home/nelson/rad_workspace/milvus/minio:/data # <-- FIXED
+    ports: [ "9000:9000", "9001:9001" ]
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.6.4
+    # image: milvusdb/milvus:master-20251015-b9187885
+    # image: milvusdb/milvus:2.5-20251017-f27dfa44-amd64
+    container_name: milvus-standalone
+    entrypoint: [ "/tini", "--", "milvus", "run", "standalone" ]
+    cpus: "28" # allow ~4 CPU cores
+    mem_limit: "500g" # hard memory cap
+    cpuset: "0-28" # pin to physical cores 0..93
+    volumes:
+      - /home/nelson/rad_workspace/milvus/milvus-data:/var/lib/milvus # <-- FIXED
+      - /home/nelson/rad_workspace/milvus/milvus.yaml:/milvus/configs/milvus.yaml # <-- UNCOMMENTED
+      #- /home/nelson/rad_workspace/milvus/milvus.yaml:/milvus/configs/milvus.yaml   # Map the local path to the 
+      #  - ./volumes/milvus:/var/lib/milvus
+    environment:
+      - MILVUS_MODE=standalone
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      # Optional but often helpful on fat boxes:
+      - GOMAXPROCS=60 # cap Go runtime to 94 OS threads
+      - OMP_NUM_THREADS=60 # for OpenMP in knowhere / BLAS, etc.
+      - MKL_NUM_THREADS=60
+        # if MKL is used under the hood
+        #volumes: [ "./volumes/milvus:/var/lib/milvus" ]
+    ports: [ "19530:19530", "9091:9091" ]
+    depends_on: [ etcd, minio ]
+    restart: unless-stopped

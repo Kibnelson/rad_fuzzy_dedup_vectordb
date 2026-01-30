@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  milvus:
+    network_mode: host # ← use host networking for THIS container only
+    # remove/ignore any 'ports:' on this service in the base compose
+    environment:
+      # Point Milvus to etcd/minio via host ports
+      ETCD_ENDPOINTS: "127.0.0.1:2379"
+      MINIO_ADDRESS: "127.0.0.1:9000"
+      MINIO_USE_SSL: "false"
+    depends_on:
+      - etcd
+      - minio
+
+  etcd:
+    # must publish to host so milvus-standalone (on host net) can reach it
+    ports:
+      - "2379:2379" # adjust if your base file already exposes it
+
+  minio:
+    # must publish to host so milvus-standalone (on host net) can reach it
+    ports:
+      - "9000:9000"
+      - "9001:9001"
