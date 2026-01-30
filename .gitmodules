@@ -1,0 +1,6 @@
+[submodule "faiss"]
+	path = faiss
+	url = https://github.com/Kibnelson/faiss.git
+[submodule "data-prep-kit"]
+	path = data-prep-kit
+	url = https://github.com/Kibnelson/data-prep-kit.git
