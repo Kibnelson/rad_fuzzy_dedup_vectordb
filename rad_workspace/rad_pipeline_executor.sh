@@ -109,7 +109,7 @@ PROBE_EFC_MUL="${PROBE_EFC_MUL:-2.0}"
 # Optional: attribute probe “timed” search+insert throughput to a specific ef (NEW script)
 PROBE_TIMING_EF="${PROBE_TIMING_EF:-}"
 
-TOPK="${TOPK:-32}"
+TOPK="${TOPK:-4}"
 
 # M sets
 M_BUILD_LIST="${M_BUILD_LIST:-128}"
