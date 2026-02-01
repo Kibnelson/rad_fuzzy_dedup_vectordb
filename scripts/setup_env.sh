@@ -27,9 +27,9 @@ echo "REPO_ROOT=$REPO_ROOT"
 echo "PWD=$(pwd)"
 
 # ---- venv ----
-source "$REPO_ROOT/data-prep-kit/transforms/universal/fdedup/venv/bin/activate"
-export PATH="$REPO_ROOT/data-prep-kit/transforms/universal/fdedup/venv/bin:$PATH"
+source "$REPO_ROOT/data-prep-kit-rad/transforms/universal/fdedup/venv/bin/activate"
+export PATH="$REPO_ROOT/data-prep-kit-rad/transforms/universal/fdedup/venv/bin:$PATH"
 
 # ---- PYTHONPATH (safe even if previously unset) ----
 SITEPKG="$(python -c 'import site; print(site.getsitepackages()[0])')"
-export PYTHONPATH="$SITEPKG:$REPO_ROOT/data-prep-kit/data-processing-lib/python/src:$REPO_ROOT/data-prep-kit/data-processing-lib/spark/src:$REPO_ROOT/data-prep-kit/data-processing-lib/ray/src:$REPO_ROOT/data-prep-kit/transforms/universal/fdedup:$REPO_ROOT/data-prep-kit/transforms/universal/fdedup/dpk_fdedup:$REPO_ROOT/data-prep-kit/transforms/universal/fdedup/dpk_fdedup/spark:$REPO_ROOT/data-prep-kit/transforms/universal/fdedup/dpk_fdedup/ray:$REPO_ROOT/data-prep-kit/transforms/universal/filter/dpk_filter:$REPO_ROOT/data-prep-kit/transforms/universal/filter/dpk_filter/ray:$REPO_ROOT/data-prep-kit/transforms/universal/filter/dpk_filter/spark:$REPO_ROOT/dpk_simd:${PYTHONPATH:-}"
+export PYTHONPATH="$SITEPKG:$REPO_ROOT/data-prep-kit-rad/data-processing-lib/python/src:$REPO_ROOT/data-prep-kit-rad/data-processing-lib/spark/src:$REPO_ROOT/data-prep-kit-rad/data-processing-lib/ray/src:$REPO_ROOT/data-prep-kit-rad/transforms/universal/fdedup:$REPO_ROOT/data-prep-kit-rad/transforms/universal/fdedup/dpk_fdedup:$REPO_ROOT/data-prep-kit-rad/transforms/universal/fdedup/dpk_fdedup/spark:$REPO_ROOT/data-prep-kit-rad/transforms/universal/fdedup/dpk_fdedup/ray:$REPO_ROOT/data-prep-kit-rad/transforms/universal/filter/dpk_filter:$REPO_ROOT/data-prep-kit-rad/transforms/universal/filter/dpk_filter/ray:$REPO_ROOT/data-prep-kit-rad/transforms/universal/filter/dpk_filter/spark:$REPO_ROOT/dpk_simd:${PYTHONPATH:-}"
