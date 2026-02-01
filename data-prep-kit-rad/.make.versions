@@ -1,0 +1,90 @@
+################################################################################
+# Here we attempt to capture/define all the version numbers used across the 
+# repository in Makefile format.  These are generally considered the version
+# numbers TO BE published on the NEXT release/publishing of artifacts.
+#
+# NOTE: If you modify any of the version numbers, you MUST run "make set-versions"
+# from the top of the repo to have the new versions applied throughout the repo.
+#
+################################################################################
+
+REQUIRED_PYTHON_VERSIONS=">=3.10,<3.13"
+
+################################################################################
+# The *_NEXT_RELEASE below designated the next planned release for the given package
+# And is adjust after each production release to the wheel to pypi
+
+# The suffix is used to create internediate dev wheels that can be published to pypi
+# for integration testing or other
+
+DPK_NEXT_RELEASE=1.0.0
+DPK_VERSION_SUFFIX=.dev1
+
+
+DPK_CONNECTOR_NEXT_RELEASE=0.2.4
+DPK_CONNECTOR_SUFFIX=.dev0
+
+TRANSFORM_NEXT_RELEASE=1.1.2
+TRANSFORM_VERSION_SUFFIX=.dev0
+
+################################################################################
+# Begin versions that the repo depends on. 
+
+KFP_v2=2.2.0
+KFP_v2_SDK=2.8.0
+KFP_v1=1.8.5
+KFP_v1_SDK=1.8.22
+RAY=2.36.1
+SPARK_VERSION=3.5.2
+
+
+
+DPK_VERSION=$(DPK_NEXT_RELEASE)$(DPK_VERSION_SUFFIX)
+
+# Data prep lab wheel version
+DPK_LIB_VERSION=$(DPK_VERSION)
+DPK_LIB_KFP_VERSION=$(DPK_VERSION)
+DPK_LIB_KFP_VERSION_v2=$(DPK_VERSION)
+DPK_LIB_KFP_SHARED=$(DPK_VERSION)
+
+
+DPK_CONNECTOR_VERSION=$(DPK_CONNECTOR_NEXT_RELEASE)$(DPK_CONNECTOR_SUFFIX)
+
+
+ifeq ($(KFPv2), 1)
+        WORKFLOW_SUPPORT_LIB=kfp_v2_workflow_support
+else
+        WORKFLOW_SUPPORT_LIB=kfp_v1_workflow_support
+endif
+
+
+TRANSFORMS_PKG_VERSION=$(TRANSFORM_NEXT_RELEASE)$(TRANSFORM_VERSION_SUFFIX)
+
+# publish docker images with latest tag
+ifeq ($(TRANSFORM_VERSION_SUFFIX), )
+	DOCKER_IMAGE_VERSION?=$(TRANSFORM_NEXT_RELEASE)
+else
+	DOCKER_IMAGE_VERSION?=latest
+#	DOCKER_IMAGE_VERSION?=$(TRANSFORMS_PKG_VERSION)
+endif
+
+
+## Return the corresponding version or tag
+.PHONY: docker-tag dpk-tag transforms-tag
+# Printout the docker tag currently being used
+docker-tag::
+	@echo $(DOCKER_IMAGE_VERSION)
+
+# Printout the current releast tag for the DPK wheel
+dpk-tag::
+	@echo $(DPK_VERSION)
+
+# Printout the current releast tag for the trsnsdfotmd wheel
+transforms-tag::
+	@echo $(TRANSFORMS_PKG_VERSION)
+
+# Printout the current release tag for the DPK Connector wheel
+dpk-connector-tag::
+	@echo $(DPK_CONNECTOR_VERSION)
+
+
