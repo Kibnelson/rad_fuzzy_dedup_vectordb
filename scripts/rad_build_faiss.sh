@@ -19,6 +19,7 @@ cmake -S "${FAISS_DIR}" -B "${BUILD_DIR}" \
   -DFAISS_OPT_LEVEL=avx512 \
   -DCMAKE_CXX_FLAGS="-mavx512vpopcntdq"
 
+
 make -C "${BUILD_DIR}" -j "${JOBS}" faiss_avx512
 make -C "${BUILD_DIR}" -j "${JOBS}" swigfaiss_avx512
 
