@@ -1,11 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# --- auto-detect repo root and cd to rad_workspace ---
+START_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+REPO_ROOT="$(git -C "$START_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" ]]; then
+  d="$START_DIR"
+  while [[ "$d" != "/" ]]; do
+    [[ -d "$d/.git" ]] && { REPO_ROOT="$d"; break; }
+    d="$(dirname "$d")"
+  done
+fi
+
+[[ -n "$REPO_ROOT" ]] || { echo "ERROR: could not detect repo root" >&2; exit 1; }
+
+export REPO_ROOT
+RAD_WS="$REPO_ROOT/rad_workspace"
+cd "$RAD_WS" || { echo "ERROR: missing $RAD_WS" >&2; exit 1; }
+
+echo "REPO_ROOT=$REPO_ROOT"
+echo "PWD=$(pwd)"
 
 
-# dir  = folder with *.parquet splits
-# tag  = prefix for series names (e.g., 3M, 6M, 30M)
-# M    = number of millions of docs you want (3, 6, 30, etc.)
-# optional 4th arg: docs per parquet (default 500000)
 make_series_list() {
   local dir="$1"
   local tag="$2"     # e.g. "3M"
@@ -47,12 +63,21 @@ make_series_list() {
 
   export SERIES_LIST="${parts[*]}"
   echo "SERIES_LIST=${SERIES_LIST}"
-} 
+}
 
 
-#  no cache and with SIMD
-export OUT=/home/nelson/rad_fuzzy_dedup_vectordb/results/30_experiment_cc_main_v2/cc_main_rad_only_v14/
-make_series_list "/home/nelson/rad_fuzzy_dedup_vectordb/data/lm1b_rad_30M" "6M" 100
+
+
+
+# #  no cache and with SIMD
+# export OUT=/home/nelson/rad_fuzzy_dedup_vectordb/results/30_experiment_cc_main_v2/cc_main_rad_only_v14/
+# make_series_list "/home/nelson/rad_fuzzy_dedup_vectordb/data/lm1b_rad_30M" "6M" 100
+
+# ---- DATA ----
+export OUT="${OUT:-$REPO_ROOT/results/cc_main_1M_exp/cc_main_1M_results_v2}"
+make_series_list "$REPO_ROOT/data/cc_main_1M" "6M" 5
+
+
 
 
 IFS=$'\n\t'
@@ -361,4 +386,4 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
 
 done
 
-echo "🎉 All series done."
+echo "All series done."
