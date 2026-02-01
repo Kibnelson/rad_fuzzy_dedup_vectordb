@@ -143,8 +143,8 @@ need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1" >&2; exit 1
 
 wrapper_for_metric() {
   local metric="$1"
-  if [[ "$metric" == "hamming" ]]; then echo ""
-  elif [[ "$metric" == "jaccard" ]]; then echo ""
+  if [[ "$metric" == "hamming" ]]; then echo "./run_hamming_s3.sh"
+  elif [[ "$metric" == "jaccard" ]]; then echo "./run_jaccard_s3.sh"
   else echo ""; fi
   # "$metric" == "jaccard"
 }
@@ -317,8 +317,8 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
 
   # ---------- Build indices (extend previous when possible) ----------
   for metric in "${METRICS_ARR[@]}"; do
-    WRAP="$(wrapper_for_metric "$metric")" || true
-    [[ -n "$WRAP" ]] || { echo "Unknown metric '$metric' (need hamming|jaccard)"; exit 1; }
+    # WRAP="$(wrapper_for_metric "$metric")" || true
+    # [[ -n "$WRAP" ]] || { echo "Unknown metric '$metric' (need hamming|jaccard)"; exit 1; }
 
     for M in "${M_BUILD_ARR[@]}"; do
       echo "== rad_build_index_bitmap $metric (M=$M, $SERIES) =="
@@ -354,7 +354,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
       
       fi
 
-      $WRAP "${BUILD_ARGS[@]}" | tee "$LOG_DIR/04_build_${metric}_M${M}.log"
+    "${BUILD_ARGS[@]}" | tee "$LOG_DIR/04_build_${metric}_M${M}.log"
     done
   done
 
