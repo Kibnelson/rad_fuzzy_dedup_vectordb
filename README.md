@@ -36,6 +36,10 @@ If your clone uses a different submodule directory layout, ensure you have `fais
 ## Clone (with submodules)
 
 ```bash
+
+sudo apt update
+sudo apt install git -y
+
 git clone --recurse-submodules https://github.com/Kibnelson/rad_fuzzy_dedup_vectordb.git
 cd rad_fuzzy_dedup_vectordb
 ```
@@ -76,7 +80,7 @@ docker --version
 ### 1) Build the DPK `fdedup` virtualenv (one-time)
 
 ```bash
-cd data-prep-kit/transforms/universal/fdedup
+cd data-prep-kit-rad/transforms/universal/fdedup
 make venv
 cd ../../../..
 ```

@@ -70,8 +70,8 @@ make_series_list() {
 
 
 # ---- DATA ----
-export OUT="${OUT:-$REPO_ROOT/results/lm1b_rad_30M_exp/lm1b_rad_30M_results_v1}"
-make_series_list "$REPO_ROOT/data/lm1b_rad_30M" "6M" 100
+export OUT="${OUT:-$REPO_ROOT/results/cc_main_1M_exp/cc_main_1M_results_v1}"
+make_series_list "$REPO_ROOT/data/cc_main_1M" "6M" 5
 
 
 
