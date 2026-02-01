@@ -143,10 +143,10 @@ need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1" >&2; exit 1
 
 wrapper_for_metric() {
   local metric="$1"
-  # if [[ "$metric" == "hamming" ]]; then echo "./run_hamming_s3.sh"
-  # elif [[ "$metric" == "jaccard" ]]; then echo "./run_jaccard_s3.sh"
-  # else echo ""; fi
-  "$metric" == "jaccard"
+  if [[ "$metric" == "hamming" ]]; then echo ""
+  elif [[ "$metric" == "jaccard" ]]; then echo ""
+  else echo ""; fi
+  # "$metric" == "jaccard"
 }
 
 # Tokenize whitespace-separated lists into arrays regardless of global IFS.
