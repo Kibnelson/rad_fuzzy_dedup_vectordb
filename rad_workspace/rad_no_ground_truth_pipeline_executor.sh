@@ -65,7 +65,7 @@ TEXT_COL="${TEXT_COL:-contents}"
 MINHASH_COL="${MINHASH_COL:-}"     # leave empty if not available
 
 # Prepare / dedup
-QUERIES_N="${QUERIES_N:-100000}"
+QUERIES_N="${QUERIES_N:-1000}"
 GLOBAL_SEED="${GLOBAL_SEED:-12345}"
 K_PER_DOC="${K_PER_DOC:-112}"
 M_BITS="${M_BITS:-4096}"
@@ -79,10 +79,10 @@ NUM_WORKERS="${NUM_WORKERS:-28}"
 THREADS="${THREADS:-28}"
 
 # Used by the NEW script as task chunking for MinHash in multiprocessing
-MH_BATCH="${MH_BATCH:-200000}"
+MH_BATCH="${MH_BATCH:-2000}"
 
 # Used by the NEW script as build batch size (corpus phase)
-ADD_BATCH="${ADD_BATCH:-200000}"
+ADD_BATCH="${ADD_BATCH:-10000}"
 
 # Probe batch size (query/probe phase)
 PROBE_BATCH="${PROBE_BATCH:-10000}"
