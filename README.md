@@ -80,7 +80,7 @@ docker --version
 ### 1) Build the DPK `fdedup` virtualenv (one-time)
 
 ```bash
-cd data-prep-kit-rad/transforms/universal/fdedup
+cd data-prep-kit-rad/transforms/universal/dpk_fdedup
 make venv
 cd ../../../..
 ```
@@ -91,6 +91,8 @@ From the **repo root**:
 
 ```bash
 source scripts/setup_env.sh
+
+pip install -r scripts/requirements.txt
 ```
 
 This script:
