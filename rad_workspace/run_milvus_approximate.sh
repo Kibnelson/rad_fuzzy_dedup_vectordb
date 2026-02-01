@@ -78,7 +78,6 @@ make_series_list "$REPO_ROOT/data/cc_main_1M" "6M" 5
 IFS=$'\n\t'
 
 
-
 # Columns
 ID_COL="${ID_COL:-int_id_column}"
 TEXT_COL="${TEXT_COL:-contents}"
@@ -88,8 +87,8 @@ MINHASH_COL="${MINHASH_COL:-}"     # leave empty if not available
 QUERIES_N="${QUERIES_N:-1000}"
 GLOBAL_SEED="${GLOBAL_SEED:-12345}"
 K_PER_DOC="${K_PER_DOC:-112}"
-M_BITS="${M_BITS:-4096}"
 
+M_BITS="${M_BITS:-3584}"
 PERMS_SEED="${PERMS_SEED:-49037}"
 MMH3_SEED="${MMH3_SEED:-9173}"
 JACCARD_THR="${JACCARD_THR:-0.7}"
@@ -99,22 +98,17 @@ NUM_WORKERS="${NUM_WORKERS:-28}"
 THREADS="${THREADS:-28}"
 MH_BATCH="${MH_BATCH:-2000}"
 ADD_BATCH="${ADD_BATCH:-10000}"
-EFC="${EFC:-512}"
-TOPK="${TOPK:-4}"
+EFC="${EFC:-300}"
+TOPK="${TOPK:-16}"
 
 
+# M sets
 M_BUILD_LIST="${M_BUILD_LIST:-128}"
 M_QUERY_LIST="${M_QUERY_LIST:-128}"
 
 
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-
-
-# Metrics to run (space separated)
 METRICS="${METRICS:-jaccard}"  # e.g., "hamming", "jaccard", or "hamming jaccard"
+
 
 # Example:
 # SERIES_LIST='100K=/data/part_1.parquet 200K=/data/part_2.parquet 300K=/data/part_3.parquet'
@@ -143,10 +137,9 @@ need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1" >&2; exit 1
 
 wrapper_for_metric() {
   local metric="$1"
-  if [[ "$metric" == "hamming" ]]; then echo "./run_hamming_s3.sh"
-  elif [[ "$metric" == "jaccard" ]]; then echo "./run_jaccard_s3.sh"
+  if [[ "$metric" == "hamming" ]]; then echo "./run_hamming.sh"
+  elif [[ "$metric" == "jaccard" ]]; then echo "./run_jaccard.sh"
   else echo ""; fi
-  # "$metric" == "jaccard"
 }
 
 # Tokenize whitespace-separated lists into arrays regardless of global IFS.
@@ -158,7 +151,7 @@ tokenize_lists() {
   IFS="$IFS_BAK"
 }
 
-# Find a previous index dir for rad_data_prepare. (use first existing metric×M under previous series)
+# Find a previous index dir for rad_data_prepare (use first existing metric×M under previous series)
 find_prev_index_dir_for_prepare() {
   local prev_series="$1"
   echo ">>OUT_SERIES>>"
@@ -229,16 +222,10 @@ done
 
 
 
-########################################
-# Main loop
-########################################
-
-
-  echo $SERIES_ARR
+echo $SERIES_ARR
   
-  printf '(%s)\n' "$(printf '"%s" ' "${SERIES_ARR[@]}")"
+printf '(%s)\n' "$(printf '"%s" ' "${SERIES_ARR[@]}")"
 
-# for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
 for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
   echo "idx=$idx  val=${SERIES_ARR[idx]}"
 
@@ -257,6 +244,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
   echo ">>> OUTDIR: $OUT_SERIES (caches/logs) | $OUT (indices/figures)"
   echo "==============================="
 
+
   echo $idx
 
 
@@ -264,19 +252,20 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
   PREP_PREV_DIR_FILES=""
 
   if (( idx > 0 )); then
+    echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>SECOND"
     PREV_SERIES="${SERIES_ARR[$((idx-1))]}"
     PREP_PREV_DIR="$OUT${PREV_SERIES}/manifests/"
     PREP_PREV_DIR_FILES="$OUT${PREV_SERIES}/cache/"
 
     if [[ -n "${PREP_PREV_DIR}" ]]; then
-      echo "   ↪ rad_data_prepare. will reuse prev_index_dir=${PREP_PREV_DIR}"
-      echo "   ↪ rad_data_prepare. will reuse prev_index_dir=${PREP_PREV_DIR_FILES}"
+      echo "   ↪ rad_data_prepare will reuse prev_index_dir=${PREP_PREV_DIR}"
+      echo "   ↪ rad_data_prepare will reuse prev_index_dir=${PREP_PREV_DIR_FILES}"
     else
-      echo "   ↪ no prev_index_dir found for rad_data_prepare.; proceeding fresh."
+      echo "   ↪ no prev_index_dir found for rad_data_prepare; proceeding fresh."
     fi
   fi
 
-  echo "== Step 1: rad_data_prepare. ($SERIES) =="
+  # echo "== Step 1: rad_data_prepare ($SERIES) =="
   python rad_data_prepare.py \
     --input "$INPUT" \
     --outdir "$OUT_SERIES" \
@@ -289,7 +278,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     --K "$K_PER_DOC" --M_bits "$M_BITS" \
     --value_to_bucket mod \
     --perms_seed "$PERMS_SEED" --mmh3_seed "$MMH3_SEED" \
-    | tee "$LOG_DIR/01_rad_data_prepare..log"
+    | tee "$LOG_DIR/01_rad_data_prepare.log"
   echo "✓ Step 1 complete ($SERIES)."
 
   echo "== Step 2: rad_data_dedup_corpus (corpus) ($SERIES) =="
@@ -297,7 +286,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     --outdir "$OUT_SERIES" \
     --id_col "$ID_COL" \
     --text_col "$TEXT_COL" \
-    --corpus_cache "$OUT_SERIES/cache/corpus.parquet" \
+    --corpus_cache "$OUT_SERIES/cache/corpus_970k.parquet" \
     --num_workers "$NUM_WORKERS" \
     --jaccard_threshold "$JACCARD_THR" \
     | tee "$LOG_DIR/02_rad_data_dedup_corpus_corpus.log"
@@ -308,34 +297,38 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     --outdir "$OUT_SERIES" \
     --id_col "$ID_COL" \
     --text_col "$TEXT_COL" \
-    --corpus_cache "$OUT_SERIES/cache/queries.parquet" \
+    --corpus_cache "$OUT_SERIES/cache/queries_30k.parquet" \
     --num_workers "$NUM_WORKERS" \
     --jaccard_threshold "$JACCARD_THR" \
     | tee "$LOG_DIR/02A_rad_data_dedup_corpus_queries.log"
   echo "✓ Step 2A (queries) complete ($SERIES)."
 
 
+
+  sudo docker logs -f milvus-standalone 2>&1 \
+    | grep --line-buffered 'CreateIndex' \
+    | tee -a createindex2.log &
+
+
+  #  --series "$SERIES" --metric "$metric" --M "$M"
   # ---------- Build indices (extend previous when possible) ----------
   for metric in "${METRICS_ARR[@]}"; do
-    # WRAP="$(wrapper_for_metric "$metric")" || true
-    # [[ -n "$WRAP" ]] || { echo "Unknown metric '$metric' (need hamming|jaccard)"; exit 1; }
 
     for M in "${M_BUILD_ARR[@]}"; do
-      echo "== rad_build_index_bitmap $metric (M=$M, $SERIES) =="
+      echo "== rad_build_index_milvus_apprx $metric (M=$M, $SERIES) =="
 
       BUILD_ARGS=(
-        python rad_build_index_bitmap.py
+        python rad_build_index_milvus_apprx.py
         --outdir "$OUT_SERIES"                     # indices under $OUT/indices/<SERIES>/<metric>/M<M>
-        --corpus_parquet "$OUT_SERIES/cache/corpus_dedup.parquet"
-        --id_col "$ID_COL" --text_col "$TEXT_COL"
-        --series "$SERIES" --metric "$metric" --M "$M"
-        --efC "$EFC" --threads "$THREADS" --mh_batch "$MH_BATCH" --add_batch "$ADD_BATCH"
+        --main_parquet "$OUT_SERIES/cache/corpus_970k_dedup.parquet"
+        --id_col "$ID_COL" --mh_batch "$MH_BATCH"  --threads "$THREADS" --text_col "$TEXT_COL"
       )
 
       echo ">>>>>>>>>IDX = ($idx)"
 
       if (( idx > 0 )); then
-       
+
+
         PREV_SERIES="${SERIES_ARR[$((idx-1))]}"
         # PREV_DIR="$OUT_SERIES/indices/${PREV_SERIES}/${metric}/M${M}"
         PREV_DIR="$OUT/${PREV_SERIES}/indices/${PREV_SERIES}/${metric}/M${M}"
@@ -344,7 +337,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
 
         if [[ -d "$PREV_DIR" ]]; then
           echo "   ↪ extending from prev_index_dir=$PREV_DIR"
-          BUILD_ARGS+=( --prev_index_dir "$PREV_DIR" )
+          # BUILD_ARGS+=( --prev_index_dir "$PREV_DIR" )
 
           printf '%q ' "${BUILD_ARGS[@]}"; echo
 
@@ -354,17 +347,16 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
       
       fi
 
-    "${BUILD_ARGS[@]}" | tee "$LOG_DIR/04_build_${metric}_M${M}.log"
+      "${BUILD_ARGS[@]}" | tee "$LOG_DIR/04_build_${metric}_M${M}.log"
     done
   done
-
-  # xxx
 
   echo "== Step 3: rad_prepare_ground_truth ($SERIES) =="
   python rad_prepare_ground_truth.py \
     --outdir "$OUT_SERIES" \
-    --queries_parquet "$OUT_SERIES/cache/queries_dedup.parquet" \
-    --corpus_parquet  "$OUT_SERIES/cache/corpus_dedup.parquet" \
+    --queries_parquet "$OUT_SERIES/cache/queries_30k_dedup.parquet" \
+    --corpus_parquet  "$OUT_SERIES/cache/corpus_970k_dedup.parquet" \
+    --corpus_raw_parquet  "$OUT_SERIES/cache/corpus_970k.parquet" \
     --id_col "$ID_COL" --text_col "$TEXT_COL" \
     --gt_k 1 \
     ${PREP_PREV_DIR_FILES:+--prev_index_dir} ${PREP_PREV_DIR_FILES:+"$PREP_PREV_DIR_FILES"} \
@@ -373,34 +365,32 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     | tee "$LOG_DIR/03_rad_prepare_ground_truth.log"
   
 
-
+  
   #     --save_neighbors \
   # ---------- Query indices ----------
   for metric in "${METRICS_ARR[@]}"; do
     for M in "${M_QUERY_ARR[@]}"; do
-      echo "== rad_query_index_bitmap : Bitmap→${metric^} (M=$M, $SERIES) =="
-      python rad_query_index_bitmap.py \
+      echo "== rad_query_index_milvus_apprx.py : Bitmap→${metric^} (M=$M, $SERIES) =="
+      python rad_query_index_milvus_apprx.py \
         --outdir "$OUT_SERIES" \
-        --index_path   "$OUT_SERIES/indices/${SERIES}/${metric}/M${M}/index.faiss" \
-        --labels_npy   "$OUT_SERIES/indices/${SERIES}/${metric}/M${M}/labels.npy" \
-        --queries_parquet "$OUT_SERIES/cache/queries.parquet" \
+        --queries_parquet "$OUT_SERIES/cache/queries_30k.parquet" \
+        --corpus_parquet "$OUT_SERIES/cache/corpus_970k_dedup.parquet" \
         --id_col "$ID_COL" --text_col "$TEXT_COL" \
         --series_tag "M${M}_${metric}" \
         --gt_json "$OUT_SERIES/ground_truth/gt_top1_${SERIES}.json" \
-        --threads "$THREADS" --simd_threads "$THREADS" --n_proc "$THREADS" \
+        --threads "$THREADS" \
         --query_batch 10000 --mh_batch "$MH_BATCH" \
-        --M "$M" \
-        --IDX "$idx" \
         --topk "$TOPK" \
+        --refine_k_fraction 0.001\
         --neighbors_dir "$OUT_SERIES/results/neighbors/${SERIES}_M${M}_${metric}" \
         | tee "$LOG_DIR/05_query_${metric}_M${M}.log"
     done
   done
 
-  # xxx
+  # bash /home/nelson/rad_workspace/milvus/start_milvus_dockerv2.sh
+ 
   echo "✓ Completed SERIES: $SERIES"
-  
-
 done
 
 echo "🎉 All series done."
+
