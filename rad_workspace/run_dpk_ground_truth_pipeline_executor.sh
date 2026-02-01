@@ -1,11 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# --- auto-detect repo root and cd to rad_workspace ---
+START_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+REPO_ROOT="$(git -C "$START_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$REPO_ROOT" ]]; then
+  d="$START_DIR"
+  while [[ "$d" != "/" ]]; do
+    [[ -d "$d/.git" ]] && { REPO_ROOT="$d"; break; }
+    d="$(dirname "$d")"
+  done
+fi
+
+[[ -n "$REPO_ROOT" ]] || { echo "ERROR: could not detect repo root" >&2; exit 1; }
+
+export REPO_ROOT
+RAD_WS="$REPO_ROOT/rad_workspace"
+cd "$RAD_WS" || { echo "ERROR: missing $RAD_WS" >&2; exit 1; }
+
+echo "REPO_ROOT=$REPO_ROOT"
+echo "PWD=$(pwd)"
 
 
-# dir  = folder with *.parquet splits
-# tag  = prefix for series names (e.g., 3M, 6M, 30M)
-# M    = number of millions of docs you want (3, 6, 30, etc.)
-# optional 4th arg: docs per parquet (default 500000)
 make_series_list() {
   local dir="$1"
   local tag="$2"     # e.g. "3M"
@@ -47,21 +63,18 @@ make_series_list() {
 
   export SERIES_LIST="${parts[*]}"
   echo "SERIES_LIST=${SERIES_LIST}"
-} 
+}
 
 
 
-#  no cache and with SIMD
-export OUT=/home/nelson/rad_workspace/results/30_experiment_cc_main_v2/cc_main_rad_only_v14/
-make_series_list "/home/nelson/rad_workspace/data/cc_main_rad_30M" "6M" 100
 
 
-# # small
-# export OUT=/home/nelson/rad_workspace/results/30_experiment_cc_main_test/cc_main_rad_only_v1_5/
-# make_series_list "/home/nelson/rad_workspace/data/cc_main_rad_1M" "6M" 100
+# ---- DATA ----
+export OUT="${OUT:-$REPO_ROOT/results/30_experiment_cc_main_v2/cc_main_rad_only_v15}"
+make_series_list "$REPO_ROOT/data/lm1b_rad_30M" "6M" 100
 
 
-# /home/nelson/rad_workspace/data/cc_main_rad_1M
+
 IFS=$'\n\t'
 
 
@@ -84,39 +97,14 @@ NUM_WORKERS="${NUM_WORKERS:-28}"
 
 # Build / query
 THREADS="${THREADS:-28}"
-
-# Used by the NEW script as task chunking for MinHash in multiprocessing
-MH_BATCH="${MH_BATCH:-200000}"
-
-# Used by the NEW script as build batch size (corpus phase)
-ADD_BATCH="${ADD_BATCH:-200000}"
-
-# Probe batch size (query/probe phase)
-PROBE_BATCH="${PROBE_BATCH:-10000}"
-
-# # efConstruction multiplier knobs (NEW script)
-# BUILD_EFC_MUL="${BUILD_EFC_MUL:-48.0}"
-# PROBE_EFC_MUL="${PROBE_EFC_MUL:-40.0}"
-
-
-# efConstruction multiplier knobs (NEW script)
-BUILD_EFC_MUL="${BUILD_EFC_MUL:-4.0}"
-PROBE_EFC_MUL="${PROBE_EFC_MUL:-2.0}"
-
-# # Probe ef list: space-separated (NEW script)
-# PROBE_EF_LIST="${PROBE_EF_LIST:-[300 400]}"
-
-# Optional: attribute probe “timed” search+insert throughput to a specific ef (NEW script)
-PROBE_TIMING_EF="${PROBE_TIMING_EF:-}"
-
+MH_BATCH="${MH_BATCH:-20000}"
+ADD_BATCH="${ADD_BATCH:-100000}"
+EFC="${EFC:-512}"
 TOPK="${TOPK:-4}"
 
-# M sets
+
 M_BUILD_LIST="${M_BUILD_LIST:-128}"
 M_QUERY_LIST="${M_QUERY_LIST:-128}"
-
-# M_BUILD_LIST="${M_BUILD_LIST:-64}"
-# M_QUERY_LIST="${M_QUERY_LIST:-64}"
 
 
 export OMP_NUM_THREADS=1
@@ -244,13 +232,16 @@ done
 # Main loop
 ########################################
 
-echo $SERIES_ARR
 
-printf '(%s)\n' "$(printf '"%s" ' "${SERIES_ARR[@]}")"
+  echo $SERIES_ARR
+  
+  printf '(%s)\n' "$(printf '"%s" ' "${SERIES_ARR[@]}")"
 
-for ((idx=35; idx<${#SERIES_ARR[@]}; idx++)); do
+# for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
+for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
   echo "idx=$idx  val=${SERIES_ARR[idx]}"
 
+# for idx in "${!SERIES_ARR[@]}"; do
   SERIES="${SERIES_ARR[$idx]}"
   INPUT="${INPUT_ARR[$idx]}"
 
@@ -273,10 +264,8 @@ for ((idx=35; idx<${#SERIES_ARR[@]}; idx++)); do
 
   if (( idx > 0 )); then
     PREV_SERIES="${SERIES_ARR[$((idx-1))]}"
-
-    # FIXED: missing slash after $OUT
-    PREP_PREV_DIR="$OUT/${PREV_SERIES}/manifests/"
-    PREP_PREV_DIR_FILES="$OUT/${PREV_SERIES}/cache/"
+    PREP_PREV_DIR="$OUT${PREV_SERIES}/manifests/"
+    PREP_PREV_DIR_FILES="$OUT${PREV_SERIES}/cache/"
 
     if [[ -n "${PREP_PREV_DIR}" ]]; then
       echo "   ↪ rad_data_prepare. will reuse prev_index_dir=${PREP_PREV_DIR}"
@@ -287,7 +276,6 @@ for ((idx=35; idx<${#SERIES_ARR[@]}; idx++)); do
   fi
 
   echo "== Step 1: rad_data_prepare. ($SERIES) =="
-  
   python rad_data_prepare.py \
     --input "$INPUT" \
     --outdir "$OUT_SERIES" \
@@ -303,80 +291,115 @@ for ((idx=35; idx<${#SERIES_ARR[@]}; idx++)); do
     | tee "$LOG_DIR/01_rad_data_prepare..log"
   echo "✓ Step 1 complete ($SERIES)."
 
+  echo "== Step 2: rad_data_dedup_corpus (corpus) ($SERIES) =="
+  python rad_data_dedup_corpus.py \
+    --outdir "$OUT_SERIES" \
+    --id_col "$ID_COL" \
+    --text_col "$TEXT_COL" \
+    --corpus_cache "$OUT_SERIES/cache/corpus.parquet" \
+    --num_workers "$NUM_WORKERS" \
+    --jaccard_threshold "$JACCARD_THR" \
+    | tee "$LOG_DIR/02_rad_data_dedup_corpus_corpus.log"
+  echo "✓ Step 2 (corpus) complete ($SERIES)."
 
-  # ---------- Build + Probe (divergence) ----------
-  # Probe parquet default: reuse the query parquet produced by rad_data_prepare
-  # Override with: export PROBE_PARQUET=/path/to/queries_100k.parquet
-  # PROBE_PARQUET="${PROBE_PARQUET:-$OUT_SERIES/cache/queries_30k.parquet}"
+  echo "== Step 2A: rad_data_dedup_corpus (queries) ($SERIES) =="
+  python rad_data_dedup_corpus.py \
+    --outdir "$OUT_SERIES" \
+    --id_col "$ID_COL" \
+    --text_col "$TEXT_COL" \
+    --corpus_cache "$OUT_SERIES/cache/queries.parquet" \
+    --num_workers "$NUM_WORKERS" \
+    --jaccard_threshold "$JACCARD_THR" \
+    | tee "$LOG_DIR/02A_rad_data_dedup_corpus_queries.log"
+  echo "✓ Step 2A (queries) complete ($SERIES)."
 
-  PROBE_PARQUET=$OUT_SERIES/cache/queries.parquet
-  CORPUS_PARQUET=$OUT_SERIES/cache/corpus.parquet
 
-  echo $PROBE_PARQUET
-
-  # Corpus parquet for this series is the input parquet(s)
-  # CORPUS_PARQUET="$INPUT"
-
+  # ---------- Build indices (extend previous when possible) ----------
   for metric in "${METRICS_ARR[@]}"; do
-    WRAP="$(wrapper_for_metric "$metric")"
+    WRAP="$(wrapper_for_metric "$metric")" || true
+    [[ -n "$WRAP" ]] || { echo "Unknown metric '$metric' (need hamming|jaccard)"; exit 1; }
 
-    for M in "${M_QUERY_ARR[@]}"; do
-      echo "== Build+Probe divergence : metric=${metric} (M=$M, $SERIES) =="
+    for M in "${M_BUILD_ARR[@]}"; do
+      echo "== rad_build_index_bitmap $metric (M=$M, $SERIES) =="
 
-      # Current-series index paths (same layout as before)
-      CUR_DIR="$OUT_SERIES/indices/${SERIES}/${metric}/M${M}"
-      CUR_INDEX="$CUR_DIR/index.faiss"
-      CUR_LABELS="$CUR_DIR/labels.npy"
-      mkdir -p "$CUR_DIR"
-
-      RUN_ARGS=(
-        python rad_main.py
-        --outdir "$OUT_SERIES"
-        --index_path "$CUR_INDEX"
-        --labels_npy "$CUR_LABELS"
-        --corpus_parquet "$CORPUS_PARQUET"
-        --probe_parquet "$PROBE_PARQUET"
+      BUILD_ARGS=(
+        python rad_build_index_bitmap.py
+        --outdir "$OUT_SERIES"                     # indices under $OUT/indices/<SERIES>/<metric>/M<M>
+        --corpus_parquet "$OUT_SERIES/cache/corpus_dedup.parquet"
         --id_col "$ID_COL" --text_col "$TEXT_COL"
-        --threads "$THREADS"
-        --mh_task_batch "$MH_BATCH"
-        --build_batch "$ADD_BATCH"
-        --probe_batch "$PROBE_BATCH"
-        --M "$M"
-        --topk "$TOPK"
-        --build_efC_mul "$BUILD_EFC_MUL"
-        --probe_efC_mul "$PROBE_EFC_MUL"
-        --series_tag "${SERIES}_M${M}_${metric}_probe_div"
-        --IDX "$idx"
+        --series "$SERIES" --metric "$metric" --M "$M"
+        --efC "$EFC" --threads "$THREADS" --mh_batch "$MH_BATCH" --add_batch "$ADD_BATCH"
       )
 
-      # Optional: choose which ef to attribute probe throughput timing to
-      if [[ -n "${PROBE_TIMING_EF}" ]]; then
-        RUN_ARGS+=( --probe_timing_ef "$PROBE_TIMING_EF" )
-      fi
+      echo ">>>>>>>>>IDX = ($idx)"
 
-      # Seed from previous series if available
       if (( idx > 0 )); then
+       
         PREV_SERIES="${SERIES_ARR[$((idx-1))]}"
+        # PREV_DIR="$OUT_SERIES/indices/${PREV_SERIES}/${metric}/M${M}"
         PREV_DIR="$OUT/${PREV_SERIES}/indices/${PREV_SERIES}/${metric}/M${M}"
-        PREV_INDEX="$PREV_DIR/index.faiss"
-        PREV_LABELS="$PREV_DIR/labels.npy"
 
-        if [[ -f "$PREV_INDEX" && -f "$PREV_LABELS" ]]; then
-          echo "   ↪ seeding from prev index: $PREV_INDEX"
-          RUN_ARGS+=( --prev_index_path "$PREV_INDEX" --prev_labels_npy "$PREV_LABELS" )
+        echo ">>>>>>>>>PREV_DIR = ($PREV_DIR)"
+
+        if [[ -d "$PREV_DIR" ]]; then
+          echo "   ↪ extending from prev_index_dir=$PREV_DIR"
+          BUILD_ARGS+=( --prev_index_dir "$PREV_DIR" )
+
+          printf '%q ' "${BUILD_ARGS[@]}"; echo
+
         else
-          echo "   ↪ prev index not found ($PREV_INDEX); will create NEW index."
+          echo "   ↪ prev_index_dir not found ($PREV_DIR); building fresh."
         fi
+      
       fi
 
-      # Run (keep wrapper if it is a passthrough wrapper; otherwise run python directly)
-      $WRAP "${RUN_ARGS[@]}" | tee "$LOG_DIR/05_build_probe_${metric}_M${M}.log"
-      # If wrappers are not compatible, replace the line above with:
-      # "${RUN_ARGS[@]}" | tee "$LOG_DIR/05_build_probe_${metric}_M${M}.log"
+      $WRAP "${BUILD_ARGS[@]}" | tee "$LOG_DIR/04_build_${metric}_M${M}.log"
     done
   done
 
+  # xxx
+
+  echo "== Step 3: rad_prepare_ground_truth ($SERIES) =="
+  python rad_prepare_ground_truth.py \
+    --outdir "$OUT_SERIES" \
+    --queries_parquet "$OUT_SERIES/cache/queries_dedup.parquet" \
+    --corpus_parquet  "$OUT_SERIES/cache/corpus_dedup.parquet" \
+    --id_col "$ID_COL" --text_col "$TEXT_COL" \
+    --gt_k 1 \
+    ${PREP_PREV_DIR_FILES:+--prev_index_dir} ${PREP_PREV_DIR_FILES:+"$PREP_PREV_DIR_FILES"} \
+    --out_json "$OUT_SERIES/ground_truth/gt_top1_${SERIES}.json" \
+    --num_workers "$NUM_WORKERS" --jaccard_threshold "$JACCARD_THR" \
+    | tee "$LOG_DIR/03_rad_prepare_ground_truth.log"
+  
+
+
+  #     --save_neighbors \
+  # ---------- Query indices ----------
+  for metric in "${METRICS_ARR[@]}"; do
+    WRAP="$(wrapper_for_metric "$metric")"
+    for M in "${M_QUERY_ARR[@]}"; do
+      echo "== rad_query_index_bitmap : Bitmap→${metric^} (M=$M, $SERIES) =="
+      $WRAP python rad_query_index_bitmap.py \
+        --outdir "$OUT_SERIES" \
+        --index_path   "$OUT_SERIES/indices/${SERIES}/${metric}/M${M}/index.faiss" \
+        --labels_npy   "$OUT_SERIES/indices/${SERIES}/${metric}/M${M}/labels.npy" \
+        --queries_parquet "$OUT_SERIES/cache/queries.parquet" \
+        --id_col "$ID_COL" --text_col "$TEXT_COL" \
+        --series_tag "M${M}_${metric}" \
+        --gt_json "$OUT_SERIES/ground_truth/gt_top1_${SERIES}.json" \
+        --threads "$THREADS" --simd_threads "$THREADS" --n_proc "$THREADS" \
+        --query_batch 10000 --mh_batch "$MH_BATCH" \
+        --M "$M" \
+        --IDX "$idx" \
+        --topk "$TOPK" \
+        --neighbors_dir "$OUT_SERIES/results/neighbors/${SERIES}_M${M}_${metric}" \
+        | tee "$LOG_DIR/05_query_${metric}_M${M}.log"
+    done
+  done
+
+  # xxx
   echo "✓ Completed SERIES: $SERIES"
+  
 
 done
 

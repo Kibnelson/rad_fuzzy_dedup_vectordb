@@ -9,7 +9,7 @@ cache_dir = "./data/tensorflow_datasets"
 # Pass trust_remote_code=True to allow custom code execution.
 dataset = load_dataset("c4", "en", split="train", streaming=True, cache_dir=cache_dir, trust_remote_code=True)
 
-output_file = "c4_364K_validation.parquet"
+output_file = "c4_364K.parquet"
 limit = 30000000
 chunk_size = 1000  # Adjust based on available memory
 

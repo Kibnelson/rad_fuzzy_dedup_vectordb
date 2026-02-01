@@ -48,8 +48,8 @@ def main():
     # ap.add_argument("--input", type=Path, required=True)
     # ap.add_argument("--output-dir", type=Path, required=True)
 
-    ap.add_argument("--input", type=Path, default=Path("/home/nelson/rad_workspace/data/100M.parquet"))
-    ap.add_argument("--output-dir", type=Path, default=Path("/home/nelson/rad_workspace/data/cc_main_rad_100M_NEW/"))
+    ap.add_argument("--input", type=Path, default=Path("./data/100M.parquet"))
+    ap.add_argument("--output-dir", type=Path, default=Path("./data/cc_main_rad_100M_NEW/"))
 
 
     ap.add_argument("--chunk-size", type=int, default=1_000_000)

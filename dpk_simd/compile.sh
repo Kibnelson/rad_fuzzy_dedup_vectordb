@@ -1,6 +1,3 @@
-# source /mnt/nobackup/…/fdedup/venv/bin/activate   # ensure python == 3.10
-source /mnt/nobackup/nbore/datapreprocessing/data-prep-kit3/data-prep-kit/transforms/universal/fdedup/venv/bin/activate   # python → 3.10
-
 # helper one‑liners
 PYBIN=python                                   # now points to venv python
 INCLUDES=$($PYBIN -m pybind11 --includes)

@@ -291,12 +291,91 @@ def load_or_seed_index_labels(
 
 
 # ============================================================
-# Main pipeline: BUILD then PROBE (no divergence)
+# Divergence (order-free) metrics for 2+ EFs, especially 3
+# ============================================================
+
+def _ids_to_sets(I_ids: np.ndarray) -> List[set]:
+    # I_ids: [N, K] -> list of sets length N
+    # remove -1 (missing)
+    return [set(row[row >= 0].tolist()) for row in I_ids]
+
+def divergence_order_free_summary(
+    by_ef_ids: Dict[int, np.ndarray],  # ef -> [N, K] of IDs
+    topk: int,
+) -> Dict[str, Any]:
+    efs = sorted(by_ef_ids.keys())
+    N = next(iter(by_ef_ids.values())).shape[0]
+    K = int(topk)
+
+    sets_by_ef = {ef: _ids_to_sets(arr) for ef, arr in by_ef_ids.items()}
+
+    # Pairwise overlap@K and Jaccard
+    pairwise = []
+    for i in range(len(efs)):
+        for j in range(i + 1, len(efs)):
+            a, b = efs[i], efs[j]
+            overlaps = []
+            jaccs = []
+            for qi in range(N):
+                Sa = sets_by_ef[a][qi]
+                Sb = sets_by_ef[b][qi]
+                inter = len(Sa & Sb)
+                union = len(Sa | Sb)
+                overlaps.append(inter / float(K) if K else 0.0)
+                jaccs.append((inter / float(union)) if union else 1.0)
+            pairwise.append({
+                "ef_a": a,
+                "ef_b": b,
+                "avg_overlap_at_k": float(np.mean(overlaps)) if overlaps else 0.0,
+                "avg_jaccard": float(np.mean(jaccs)) if jaccs else 0.0,
+            })
+
+    # Frequency bucketization (works for 2+ EFs; for 3 EFs it gives all/2/1)
+    frac_all = []
+    frac_exactly2 = []
+    frac_exactly1 = []
+    per_query_counts = []
+
+    for qi in range(N):
+        freq: Dict[int, int] = {}
+        for ef in efs:
+            for x in sets_by_ef[ef][qi]:
+                freq[x] = freq.get(x, 0) + 1
+
+        c_all = sum(1 for _x, c in freq.items() if c == len(efs))
+        c_2   = sum(1 for _x, c in freq.items() if c == 2) if len(efs) >= 3 else 0
+        c_1   = sum(1 for _x, c in freq.items() if c == 1)
+
+        frac_all.append(c_all / float(K) if K else 0.0)
+        frac_exactly2.append(c_2 / float(K) if K else 0.0)
+        frac_exactly1.append(c_1 / float(K) if K else 0.0)
+
+        per_query_counts.append({
+            "count_all": c_all,
+            "count_exactly2": c_2,
+            "count_exactly1": c_1,
+        })
+
+    return {
+        "efs": efs,
+        "n_queries_compared": int(N),
+        "topk": int(K),
+        "pairwise": pairwise,
+        "avg_frac_common_to_all": float(np.mean(frac_all)) if frac_all else 0.0,
+        "avg_frac_in_exactly2": float(np.mean(frac_exactly2)) if frac_exactly2 else 0.0,
+        "avg_frac_unique_to_one": float(np.mean(frac_exactly1)) if frac_exactly1 else 0.0,
+        # keep per-query counts if you want to verify later (can be large; keep on by default)
+        "per_query_freq_counts": per_query_counts,
+    }
+
+
+# ============================================================
+# Main pipeline: BUILD then PROBE (divergence), no GT
 # ============================================================
 
 def main():
     ap = argparse.ArgumentParser(
-        "rad_exp_simd_inbatch_build_and_probe (no divergence, no GT)"
+        "rad_exp_simd_inbatch_build_and_probe_divergence (no GT)"
     )
     ap.add_argument("--outdir", required=True, type=Path)
 
@@ -325,11 +404,11 @@ def main():
 
     # HNSW
     ap.add_argument("--M", type=int, default=192)
-    ap.add_argument("--topk", type=int, default=4)
-    ap.add_argument("--ef_list", type=int, nargs="+", default=[400])
+    ap.add_argument("--topk", type=int, default=10)
+    ap.add_argument("--ef_list", type=int, nargs="+", default=[200, 300, 400])
 
-    ap.add_argument("--build_efC_mul", type=float, default=4.0)   # matches bash
-    ap.add_argument("--probe_efC_mul", type=float, default=4.0)   # matches bash
+    ap.add_argument("--build_efC_mul", type=float, default=2.0)   # matches bash
+    ap.add_argument("--probe_efC_mul", type=float, default=1.0)   # matches bash
 
     # Duplicate filter threshold (Hamming distance in bits)
     ap.add_argument("--dup_bits_threshold", type=int, default=30)
@@ -338,13 +417,14 @@ def main():
     ap.add_argument("--probe_timing_ef", type=int, default=None)  # if None => base ef (first in ef_list)
 
     # Metadata / output
-    ap.add_argument("--series_tag", default="probe_div")  # kept for compatibility
-    ap.add_argument("--IDX", type=int, default=None)      # accept for compatibility
+    ap.add_argument("--series_tag", default="probe_div")
+    ap.add_argument("--IDX", type=int, default=None)  # accept for compatibility
+    ap.add_argument("--save_probe_ids_npz", action="store_true")  # optional: save ef->IDs arrays to npz
 
     args = ap.parse_args()
 
     outdir = args.outdir.resolve()
-    ensure_dir(outdir / "metrics" / "probe_divergence")  # kept for compatibility
+    ensure_dir(outdir / "metrics" / "probe_divergence")
 
     spec, perms = load_spec_and_perms(outdir)
     M_bits  = int(spec["M_bits"])
@@ -524,16 +604,20 @@ def main():
             index.hnsw.efConstruction = int(build_efC)
             index.hnsw.efSearch = int(base_ef)
 
+            
             index.efConstruction = int(build_efC)
             index.efSearch = int(base_ef)
 
-            # Warmup search
+
+            # Warmup search: trigger pb warm-build with minimal workload
             t0 = time.time()
             if XQ.shape[0] >= 1:
                 _D_warm, _I_warm = index.search(XQ[:2], 1)
             dt_ms = (time.time() - t0) * 1000.0
             print("==========warm dt_ms==========")
             print(dt_ms)
+            
+
 
             t0 = time.time()
             D, Ipos = index.search(XQ, int(args.topk))
@@ -574,8 +658,11 @@ def main():
                 ids_to_insert = ids_cand[new_mask]
 
                 index.hnsw.efConstruction = int(build_efC)
+                # efSearch during add isn’t used the same way, but keep small & stable
                 index.hnsw.efSearch = 32
 
+
+                # New: top-level fields (no-op for IndexBinaryHNSW but kept)
                 index.efConstruction = int(build_efC)
                 index.efSearch = 32
 
@@ -642,7 +729,7 @@ def main():
     build["throughput_sumsteps_rps_raw_no_search"] = (build_total_raw / (build_sumsteps_ms_no_search / 1000.0)) if build_sumsteps_ms_no_search > 0 else 0.0
 
     # --------------------------
-    # PROBE phase (no divergence)
+    # PROBE phase (divergence)
     # --------------------------
     probe: Dict[str, Any] = {
         "phase": "probe",
@@ -657,7 +744,7 @@ def main():
         "batch_kept_simd": [],
         "batch_simd_rm": [],
         "batch_oob_dist_dups_base": [],
-        "timing_search_ms_list": [],
+        "timing_search_ms_list":[],
         "batch_knownid_dups": [],
         "batch_inserted": [],
         "batch_ms_minhash": [],
@@ -666,6 +753,11 @@ def main():
         "batch_ms_insert": [],
         "batch_ms_end2end": [],
     }
+
+    # Accumulate probe search results (IDs) for ALL EFs, order-free comparison later
+    # ef -> list of [n_batch, K] arrays, concatenated at end
+    probe_ids_by_ef: Dict[int, List[np.ndarray]] = {ef: [] for ef in ef_list}
+    probe_qids_all: List[np.ndarray] = []  # track which queries were compared (kept after SIMD)
 
     probe_wall_t0 = time.time()
 
@@ -725,6 +817,7 @@ def main():
         kept_simd = int(len(keep_idx))
         simd_rm = int(len(to_remove))
 
+        # Record & continue if empty
         if kept_simd == 0:
             probe["batch_starts"].append(batch_start)
             probe["batch_raw"].append(raw_n)
@@ -744,8 +837,14 @@ def main():
         kept_mh  = mh_mat[keep_idx, :]
         XQ = minhashes_to_vectors(kept_mh, int(M_bits), int(mmh3_sd))
 
+        # PROBE: run searches for ALL ef_list first (same index state), collect IDs for divergence
+        # Then filter/insert survivors using BASE EF results only.
+        # We map Ipos -> IDs using the CURRENT labels snapshot.
+        labels_snapshot = labels  # do not modify until after all searches
+
+        # We also collect "timing ef" ms as the probe timing search component
         timing_search_ms = 0.0
-        timing_search_ms_list: List[float] = []
+        timing_search_ms_list=[]
         D_base: Optional[np.ndarray] = None
         Ipos_base: Optional[np.ndarray] = None
 
@@ -753,10 +852,12 @@ def main():
             index.hnsw.efConstruction = int(probe_efC)
             index.hnsw.efSearch = int(ef)
 
+            # New: top-level fields (no-op for IndexBinaryHNSW but kept)
             index.efConstruction = int(probe_efC)
             index.efSearch = ef
 
-            # Warmup search
+
+            # Warmup search: trigger pb warm-build with minimal workload
             t0 = time.time()
             if XQ.shape[0] >= 1:
                 _D_warm, _I_warm = index.search(XQ[:2], 1)
@@ -764,15 +865,22 @@ def main():
             print("==========warm dt_ms==========")
             print(dt_ms)
 
+             # Debug: show existing efSearch/efConstruction
             print("==========warm dt_ms===PROBE SEARCH=======")
             print("efSearch:", index.hnsw.efSearch)
             print("efConstruction:", index.hnsw.efConstruction)
+
+
 
             t0 = time.time()
             D, Ipos = index.search(XQ, int(args.topk))
             dt_ms = (time.time() - t0) * 1000.0
 
             timing_search_ms_list.append(float(dt_ms))
+
+            # Map positions -> IDs (this is what you compare, order-free)
+            I_ids = np.where(Ipos >= 0, labels_snapshot[Ipos], -1).astype(np.int64, copy=False)
+            probe_ids_by_ef[int(ef)].append(I_ids)
 
             if int(ef) == int(timing_ef):
                 timing_search_ms = float(dt_ms)
@@ -782,6 +890,8 @@ def main():
                 Ipos_base = Ipos
                 print(D)
                 print(Ipos)
+
+        probe_qids_all.append(kept_ids.copy())
 
         # BASE EF duplicate filter + insert survivors (NO re-search)
         assert D_base is not None and Ipos_base is not None
@@ -794,6 +904,8 @@ def main():
 
         oob_dist_dups_base = int(np.sum(dup_mask_dist))
         survivors_after_dist = int(np.sum(~dup_mask_dist))
+
+     
 
         inserted = 0
         knownid_dups = 0
@@ -810,15 +922,21 @@ def main():
                 XInsert = Xcand[new_mask, :]
                 ids_to_insert = ids_cand[new_mask]
 
+                
                 index.hnsw.efConstruction = int(probe_efC)
                 index.hnsw.efSearch = 10
 
+                # New: top-level fields (no-op for IndexBinaryHNSW but kept)
                 index.efConstruction = int(probe_efC)
-                index.efSearch = 10
+                index.efSearch =10
 
+                # Debug: show existing efSearch/efConstruction
+                     # Debug: show existing efSearch/efConstruction
                 print("==========warm dt_ms===PROBE INSERT=======")
                 print("efSearch:", index.hnsw.efSearch)
                 print("efConstruction:", index.hnsw.efConstruction)
+
+
 
                 t0 = time.time()
                 index.add(XInsert)
@@ -833,12 +951,15 @@ def main():
 
         end2end_ms = (time.time() - t_batch0) * 1000.0
 
+        #  n_duplicates_total += n_dup_batch
+
         probe["batch_starts"].append(batch_start)
         probe["batch_raw"].append(raw_n)
         probe["batch_kept_simd"].append(kept_simd)
         probe["batch_simd_rm"].append(simd_rm)
         probe["batch_oob_dist_dups_base"].append(oob_dist_dups_base)
         probe["timing_search_ms_list"].append(np.array(timing_search_ms_list).tolist())
+
         probe["batch_knownid_dups"].append(knownid_dups)
         probe["batch_inserted"].append(inserted)
         probe["batch_ms_minhash"].append(float(mh_ms))
@@ -874,7 +995,33 @@ def main():
     probe["throughput_sumsteps_rps_raw_timingef"] = (probe_total_raw / (probe_sumsteps_ms / 1000.0)) if probe_sumsteps_ms > 0 else 0.0
 
     # --------------------------
-    # Write metrics (no divergence section)
+    # Divergence computation (order-free, whole probe)
+    # --------------------------
+    # Concatenate per-ef arrays
+    probe_ids_concat: Dict[int, np.ndarray] = {}
+    for ef in ef_list:
+        if probe_ids_by_ef[ef]:
+            probe_ids_concat[ef] = np.vstack(probe_ids_by_ef[ef])
+        else:
+            probe_ids_concat[ef] = np.zeros((0, int(args.topk)), dtype=np.int64)
+
+    # Make sure shapes align
+    N_comp = probe_ids_concat[ef_list[0]].shape[0]
+    for ef in ef_list[1:]:
+        if probe_ids_concat[ef].shape[0] != N_comp:
+            raise RuntimeError(f"Probe accumulation mismatch: ef{ef} has {probe_ids_concat[ef].shape[0]} queries, expected {N_comp}")
+
+    divergence = divergence_order_free_summary(probe_ids_concat, topk=int(args.topk))
+
+    # Optional: save raw probe ID matrices for later verification
+    if args.save_probe_ids_npz:
+        out_npz = outdir / "metrics" / "probe_divergence" / f"{args.series_tag}_probe_ids_topk{int(args.topk)}.npz"
+        np_save = {f"ef{ef}": probe_ids_concat[ef] for ef in ef_list}
+        np.savez_compressed(out_npz, **np_save)
+        divergence["saved_probe_ids_npz"] = str(out_npz)
+
+    # --------------------------
+    # Write metrics
     # --------------------------
     out_metrics = outdir / "metrics" / "probe_divergence" / f"{args.series_tag}.json"
     payload = {
@@ -891,7 +1038,7 @@ def main():
         "probe_timing_ef": int(timing_ef),
         "build": build,
         "probe": probe,
-        "divergence_order_free": None,  # kept as placeholder (divergence removed)
+        "divergence_order_free": divergence,
     }
     write_json(out_metrics, payload)
     print(f"✓ Wrote metrics → {out_metrics}")

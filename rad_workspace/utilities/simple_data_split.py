@@ -52,8 +52,8 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
    
-    parser.add_argument("--input", type=Path, default=Path("./rad_vectordb/data/test_common_crawl/part_0001.parquet"))
-    parser.add_argument("--output-dir", type=Path, default=Path("./rad_vectordb/data/test_common_crawl/"))
+    parser.add_argument("--input", type=Path, default=Path("./data/test_common_crawl/part_0001.parquet"))
+    parser.add_argument("--output-dir", type=Path, default=Path("./data/test_common_crawl/"))
   
     parser.add_argument(
         "--chunk-size", 
