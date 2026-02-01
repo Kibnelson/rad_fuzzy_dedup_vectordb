@@ -146,6 +146,7 @@ wrapper_for_metric() {
   # if [[ "$metric" == "hamming" ]]; then echo "./run_hamming_s3.sh"
   # elif [[ "$metric" == "jaccard" ]]; then echo "./run_jaccard_s3.sh"
   # else echo ""; fi
+  "$metric" == "jaccard"
 }
 
 # Tokenize whitespace-separated lists into arrays regardless of global IFS.
