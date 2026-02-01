@@ -111,7 +111,9 @@ bash dpk_simd/compile.sh
 With the env activated, build FAISS:
 
 ```bash
-bash faiss/rad_build_faiss.sh
+in Then from the repo root (rad_fuzzy_dedup_vectordb) you can run:
+chmod +x scripts/rad_build_faiss.sh
+./scripts/rad_build_faiss.sh
 ```
 
 ---
