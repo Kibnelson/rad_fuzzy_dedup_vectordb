@@ -387,7 +387,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     done
   done
 
-  # bash /home/nelson/rad_workspace/milvus/start_milvus_dockerv2.sh
+  ./milvus/start_milvus_dockerv2.sh
  
   echo "✓ Completed SERIES: $SERIES"
 done

@@ -204,25 +204,6 @@ def parallel_minhash(
     workers = max(1, int(n_proc) if n_proc is not None else 1)
     workers = min(workers, N)
 
-    # # Build contiguous ranges covering all rows
-    # ranges: List[Tuple[int, int]] = []
-    # base = N // workers
-    # rem = N % workers
-    # start = 0
-    # for w in range(workers):
-    #     end = start + base + (1 if w < rem else 0)
-    #     if start >= end:
-    #         break
-    #     ranges.append((start, end))
-    #     start = end
-    # num_batches = len(ranges)
-
-    # if verbose:
-    #     print(
-    #         f"[parallel_minhash] rows={N} workers={workers} "
-    #         f"batches={num_batches}"
-    #     )
-
         # Build index ranges for tasks (avoid pickling large arrays)
     bs = max(1, batch_size)
     ranges = [(off, min(off + bs, N)) for off in range(0, N, bs)]
@@ -507,22 +488,9 @@ def main():
     print(f"Planned queries: {q_total:,} from {qparq}")
 
 
-    # 4) Shuffle order using a random column + sort
-    #    (works on LazyFrame even if .sample() doesn't exist)
-    # 4) Shuffle rows lazily
-    # q_ldf=q_ldf.sample(fraction=1.0, shuffle=True, seed=42)
-    # q_ldf = q_ldf.shuffle(seed=42)
-
-       # 3) Row-level shuffle (lazy, preserves doc_id↔contents pairing)
     RANDOM_COL = "_rand"
 
-    # q_ldf = (
-    #     q_ldf
-    #     .with_row_count("row_idx")  # deterministic row index
-    #     .with_columns(pl.col("row_idx").hash(seed=42).alias(RANDOM_COL))
-    #     .sort(RANDOM_COL)           # sort by hashed index ⇒ pseudo-random row order
-    #     .drop(["row_idx", RANDOM_COL])
-    # )
+  
 
 
 
@@ -662,21 +630,10 @@ def main():
             data=queries_augmented,
             anns_field="minhash_signature",
             search_params=sp,
-            limit=16,
+            limit=args.topk,
             output_fields=[args.pk_field],
             consistency_level="Bounded",
         )
-
-        # res = client.search(
-        #     collection_name=args.collection,
-        #     data=queries_augmented,
-        #     anns_field="minhash_signature",
-        #     search_params=sp,
-        #     limit=16,
-        #     output_fields=[args.pk_field],
-        #     partition_names=[args.partition] if args.partition else None,
-        #     consistency_level="Bounded",
-        # )
 
 
         dt_ms = (time.time() - t0) * 1000.0
@@ -686,29 +643,13 @@ def main():
         print(f"[CLIENT] BATCH {batch_no} finished at {now} search_total_ms={dt_ms:.2f}")
 
 
-        # Keep only the results for the original queries
-
-        # print(n_orig)
-        # print(len(res))
-        # print("===res==xxx=")
-        # print(res)
-        # # res = res[:n_orig]
-        # print(len(res))
-        # print("===res==xxx=")
-        # print(res)
-        # # xxxx
+        
 
         # Normalize + collect neighbors
         full = normalize_hits(res, args.pk_field)
         I_ids = [[int(h["id"]) for h in hits] for hits in full]
         all_neighbors.extend(I_ids)
 
-        # print("===all_neighbors==xxx=")
-        # print(all_neighbors)
-        # print("===gt==xxx=")
-        # print(gt)
-
-        # xxx
 
         # 4) Conditional INSERT
         for idx_local, qid in enumerate(kept_ids):
@@ -747,7 +688,7 @@ def main():
                     n_inserted_total += len(to_insert_rows)
                     to_insert_rows.clear()
                 except Exception as e:
-                    print(f"⚠️ insert batch failed: {e}")
+                    print(f" insert batch failed: {e}")
                     to_insert_rows.clear()
 
         per_batch_sizes.append(len(queries))
@@ -777,7 +718,7 @@ def main():
             n_inserted_total += len(to_insert_rows)
             to_insert_rows.clear()
         except Exception as e:
-            print(f"⚠️ final insert batch failed: {e}")
+            print(f" final insert batch failed: {e}")
 
     # ----- Metrics -----
     total_runtime_s = time.time() - t_all0

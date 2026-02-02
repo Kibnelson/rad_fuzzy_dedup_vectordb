@@ -288,7 +288,7 @@ rootCoord:
   maxPartitionNum: 1024
   # The minimum row count of a segment required for creating index.
   # Segments with smaller size than this parameter will not be indexed, and will be searched with brute force.
-  minSegmentSizeToEnableIndex: 1024
+  minSegmentSizeToEnableIndex: 100000000000
   enableActiveStandby: false
   maxDatabaseNum: 64 # Maximum number of database
   maxGeneralCapacity: 65536 # upper limit for the sum of of product of partitionNumber and shardNumber
@@ -310,7 +310,7 @@ proxy:
       bufSize: 512 # The maximum number of messages can be buffered in the timeTick message stream of the proxy when producing messages.
   maxNameLength: 255 # The maximum length of the name or alias that can be created in Milvus, including the collection name, collection alias, partition name, and field name.
   maxFieldNum: 64 # The maximum number of field can be created when creating in a collection. It is strongly DISCOURAGED to set maxFieldNum >= 64.
-  maxVectorFieldNum: 4 # The maximum number of vector fields that can be specified in a collection. Value range: [1, 10].
+  maxVectorFieldNum: 4 # The maximum number of vector fields that can be specified in a collection
   maxShardNum: 16 # The maximum number of shards can be created when creating in a collection.
   maxDimension: 32768 # The maximum number of dimensions of a vector can have when creating in a collection.
   # Whether to produce gin logs.\n
@@ -447,7 +447,7 @@ queryNode:
   stats:
     publishInterval: 1000 # The interval that query node publishes the node statistics information, including segment status, cpu usage, memory usage, health status, etc. Unit: ms.
   segcore:
-    knowhereThreadPoolNumRatio: 2 # The number of threads in knowhere's thread pool. If disk is enabled, the pool size will multiply with knowhereThreadPoolNumRatio([1, 32]).
+    knowhereThreadPoolNumRatio: 4 # The number of threads in knowhere's thread pool. If disk is enabled, the pool size will multiply with knowhereThreadPoolNumRatio([1, 32]).
     chunkRows: 128 # Row count by which Segcore divides a segment into chunks.
     interimIndex:
       # Whether to create a temporary index for growing segments and sealed segments not yet indexed, improving search performance.
@@ -465,6 +465,7 @@ queryNode:
       memExpansionRate: 1.15 # extra memory needed by building interim index
       buildParallelRate: 0.5 # the ratio of building interim index parallel matched with cpu num
     multipleChunkedEnable: true # Deprecated. Enable multiple chunked search
+    enableGeometryCache: false # Enable geometry cache for geometry data
     tieredStorage:
       warmup:
         # options: sync, disable.
@@ -488,20 +489,6 @@ queryNode:
       # Enable eviction for Tiered Storage. Defaults to false.
       # Note that if eviction is enabled, cache data loaded during sync warmup is also subject to eviction.
       evictionEnabled: false
-      # This ratio estimates how much evictable memory can be cached.
-      # The higher the ratio, the more physical memory is reserved for evictable memory,
-      # resulting in fewer evictions but fewer segments can be loaded.
-      # Conversely, a lower ratio results in more evictions but allows more segments to be loaded.
-      # This parameter is only valid when eviction is enabled.
-      # It defaults to 0.3 (meaning about 30% of evictable in-memory data can be cached), with a valid range of [0.0, 1.0].
-      evictableMemoryCacheRatio: 0.3
-      # This ratio estimates how much evictable disk space can be cached.
-      # The higher the ratio, the more physical disk space is reserved for evictable disk usage,
-      # resulting in fewer evictions but fewer segments can be loaded.
-      # Conversely, a lower ratio results in more evictions but allows more segments to be loaded.
-      # This parameter is only valid when eviction is enabled.
-      # It defaults to 0.3 (meaning about 30% of evictable on-disk data can be cached), with a valid range of [0.0, 1.0].
-      evictableDiskCacheRatio: 0.3
       # Enable background eviction for Tiered Storage. Defaults to false.
       # Background eviction is used to do periodic eviction in a separate thread.
       # And it will only work when both 'evictionEnabled' and 'backgroundEvictionEnabled' are set to 'true'.
@@ -524,7 +511,7 @@ queryNode:
     vectorIndex: false # Enable mmap for loading vector index
     scalarField: false # Enable mmap for loading scalar data
     scalarIndex: false # Enable mmap for loading scalar index
-    jsonStats: true # Enable mmap for loading json stats
+    jsonShredding: true # Enable mmap for loading json stats
     # Enable memory mapping (mmap) to optimize the handling of growing raw data.
     # By activating this feature, the memory overhead associated with newly added or modified data will be significantly minimized.
     # However, this optimization may come at the cost of a slight decrease in query latency for the affected data segments.
@@ -614,21 +601,21 @@ dataCoord:
     checkInterval: 1 # The interval in seconds with which the channel manager advances channel states
     notifyChannelOperationTimeout: 5 # Timeout notifing channel operations (in seconds).
   segment:
-    maxSize: 102400 #  1024 The maximum size of a segment, unit: MB. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
-    diskSegmentMaxSize: 202400 # Maximum size of a segment in MB for collection which has Disk index
-    sealProportion: 0.12 # The minimum proportion to datacoord.segment.maxSize to seal a segment. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
-    sealProportionJitter: 0.1 # segment seal proportion jitter ratio, default value 0.1(10%), if seal proportion is 12%, with jitter=0.1, the actuall applied ratio will be 10.8~12%
-    assignmentExpiration: 2000000 # Expiration time of the segment assignment, unit: ms
-    allocLatestExpireAttempt: 200 # The time attempting to alloc latest lastExpire from rootCoord after restart
-    maxLife: 864000000 # The max lifetime of segment in seconds, 24*60*60
+    maxSize: 50002400 # The maximum size of a segment, unit: MB. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
+    diskSegmentMaxSize: 50002400 # Maximum size of a segment in MB for collection which has Disk index
+    sealProportion: 1 # The minimum proportion to datacoord.segment.maxSize to seal a segment. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
+    sealProportionJitter: 0.0 # segment seal proportion jitter ratio, default value 0.1(10%), if seal proportion is 12%, with jitter=0.1, the actuall applied ratio will be 10.8~12%
+    assignmentExpiration: 20000000 # Expiration time of the segment assignment, unit: ms
+    allocLatestExpireAttempt: 20000000 # The time attempting to alloc latest lastExpire from rootCoord after restart
+    maxLife: 3153600000 # The max lifetime of segment in seconds, 24*60*60
     # If a segment didn't accept dml records in maxIdleTime and the size of segment is greater than
     # minSizeFromIdleToSealed, Milvus will automatically seal it.
     # The max idle time of segment in seconds, 10*60.
-    maxIdleTime: 6000000
-    minSizeFromIdleToSealed: 16 # The min size in MB of segment which can be idle from sealed.
+    maxIdleTime: 3153600000
+    minSizeFromIdleToSealed: 50002400 # The min size in MB of segment which can be idle from sealed.
     # The max number of binlog (which is equal to the binlog file num of primary key) for one segment,
     # the segment will be sealed if the number of binlog file reaches to max value.
-    maxBinlogFileNumber: 32
+    maxBinlogFileNumber: 320000000
     smallProportion: 0.5 # The segment is considered as "small segment" when its # of rows is smaller than
     # (smallProportion * segment max # of rows).
     # A compaction will happen on small segments if the segment after compaction will have
@@ -641,13 +628,13 @@ dataCoord:
     channel:
       # The size threshold in MB, if the total size of growing segments of each shard
       # exceeds this threshold, the largest growing segment will be sealed.
-      growingSegmentsMemSize: 4096
+      growingSegmentsMemSize: 755000
       # If the total entry number of l0 logs of each shard
       # exceeds this threshold, the earliest growing segments will be sealed.
-      blockingL0EntryNum: 5000000
+      blockingL0EntryNum: 100000000
       # The size threshold in MB, if the total entry number of l0 logs of each shard
       # exceeds this threshold, the earliest growing segments will be sealed.
-      blockingL0SizeInMB: 64
+      blockingL0SizeInMB: 755000
   autoUpgradeSegmentIndex: false # whether auto upgrade segment index to index engine's version
   forceRebuildSegmentIndex: false # force rebuild segment index to specify index engine's version
   # if param forceRebuildSegmentIndex is enabled, the vector index will be rebuilt to aligned with targetVecIndexVersion.
@@ -657,12 +644,12 @@ dataCoord:
   segmentFlushInterval: 2 # the minimal interval duration(unit: Seconds) between flushing operation on same segment
   # Switch value to control if to enable segment compaction.
   # Compaction merges small-size segments into a large segment, and clears the entities deleted beyond the rentention duration of Time Travel.
-  enableCompaction: true
+  enableCompaction: false
   compaction:
     # Switch value to control if to enable automatic segment compaction during which data coord locates and merges compactable segments in the background.
     # This configuration takes effect only when dataCoord.enableCompaction is set as true.
-    enableAutoCompaction: true
-    indexBasedCompaction: true
+    enableAutoCompaction: false
+    indexBasedCompaction: false
     # compaction task prioritizer, options: [default, level, mix].
     # default is FIFO.
     # level is prioritized by level: L0 compactions first, then mix compactions, then clustering compactions.
@@ -694,7 +681,7 @@ dataCoord:
       expiredlog:
         maxsize: 10485760 # The expired log size of a segment to trigger a compaction, default as 10MB
     clustering:
-      enable: true # Enable clustering compaction
+      enable: false # Enable clustering compaction
       autoEnable: false # Enable auto clustering compaction
       triggerInterval: 600 # clustering compaction trigger interval in seconds
       minInterval: 3600 # The minimum interval between clustering compaction executions of one collection, to avoid redundant compaction
@@ -742,11 +729,11 @@ dataCoord:
     indexTaskSlotUsage: 64 # slot usage of index task per 512mb
     statsTaskSlotUsage: 8 # slot usage of stats task per 512mb
     analyzeTaskSlotUsage: 65535 # slot usage of analyze task
-  jsonStatsTriggerCount: 10 # jsonkey stats task count per trigger
-  jsonStatsTriggerInterval: 10 # jsonkey task interval per trigger
-  jsonStatsMaxShreddingColumns: 1024 # the max number of columns to shred
-  jsonStatsShreddingRatioThreshold: 0.3 # the ratio threshold to shred
-  jsonStatsWriteBatchSize: 819200 # the batch size to write
+  jsonShreddingTriggerCount: 10 # jsonkey stats task count per trigger
+  jsonShreddingTriggerInterval: 10 # jsonkey task interval per trigger
+  jsonShreddingMaxColumns: 1024 # the max number of columns to shred
+  jsonShreddingRatioThreshold: 0.3 # the ratio threshold to shred
+  jsonShreddingWriteBatchSize: 81920 # the batch size to write
   ip:  # TCP/IP address of dataCoord. If not specified, use the first unicastable address
   port: 13333 # TCP port of dataCoord
   grpc:
@@ -769,8 +756,8 @@ dataNode:
     # The maximum size of each binlog file in a segment buffered in memory. Binlog files whose size exceeds this value are then flushed to MinIO or S3 service.
     # Unit: Byte
     # Setting this parameter too small causes the system to store a small amount of data too frequently. Setting it too large increases the system's demand for memory.
-    insertBufSize: 16777216
-    deleteBufBytes: 16777216 # Max buffer size in bytes to flush del for a single channel, default as 16MB
+    insertBufSize: 268435456000
+    deleteBufBytes: 268435456000 # Max buffer size in bytes to flush del for a single channel, default as 16MB
     syncPeriod: 600 # The period to sync segments if buffer is not empty.
   memory:
     forceSyncEnable: true # Set true to force sync if memory usage is too high
@@ -920,8 +907,8 @@ common:
   entityExpiration: -1 # Entity expiration in seconds, CAUTION -1 means never expire
   indexSliceSize: 16 # Index slice size in MB
   threadCoreCoefficient:
-    highPriority: 4 # This parameter specify how many times the number of threads is the number of cores in high priority pool
-    middlePriority: 2 # This parameter specify how many times the number of threads is the number of cores in middle priority pool
+    highPriority: 10 # This parameter specify how many times the number of threads is the number of cores in high priority pool
+    middlePriority: 5 # This parameter specify how many times the number of threads is the number of cores in middle priority pool
     lowPriority: 1 # This parameter specify how many times the number of threads is the number of cores in low priority pool
   buildIndexThreadPoolRatio: 0.75
   DiskIndex:
@@ -945,7 +932,7 @@ common:
   # Currently, only QueryNode uses 'common.diskWrite*' parameters. Support for other components will be added in the future.
   # The options include 'direct' and 'buffered'. The default value is 'buffered'.
   diskWriteMode: buffered
-  # Disk write buffer size in KB, only used when disk write mode is 'direct', default is 64KB.
+  # Disk write buffer size in KB, used for both 'direct' and 'buffered' modes, default is 64KB.
   # Current valid range is [4, 65536]. If the value is not aligned to 4KB, it will be rounded up to the nearest multiple of 4KB.
   diskWriteBufferSizeKb: 64
   # This parameter controls the number of writer threads used for disk write operations. The valid range is [0, hardware_concurrency].
@@ -983,7 +970,7 @@ common:
         readwrite:
           privileges: ListDatabases,SelectOwnership,SelectUser,DescribeResourceGroup,ListResourceGroups,ListPrivilegeGroups,FlushAll,TransferNode,TransferReplica,UpdateResourceGroups # Cluster level readwrite privileges
         admin:
-          privileges: ListDatabases,SelectOwnership,SelectUser,DescribeResourceGroup,ListResourceGroups,ListPrivilegeGroups,FlushAll,TransferNode,TransferReplica,UpdateResourceGroups,BackupRBAC,RestoreRBAC,CreateDatabase,DropDatabase,CreateOwnership,DropOwnership,ManageOwnership,CreateResourceGroup,DropResourceGroup,UpdateUser,RenameCollection,CreatePrivilegeGroup,DropPrivilegeGroup,OperatePrivilegeGroup # Cluster level admin privileges
+          privileges: ListDatabases,SelectOwnership,SelectUser,DescribeResourceGroup,ListResourceGroups,ListPrivilegeGroups,FlushAll,TransferNode,TransferReplica,UpdateResourceGroups,BackupRBAC,RestoreRBAC,CreateDatabase,DropDatabase,CreateOwnership,DropOwnership,ManageOwnership,CreateResourceGroup,DropResourceGroup,UpdateUser,RenameCollection,CreatePrivilegeGroup,DropPrivilegeGroup,OperatePrivilegeGroup,UpdateReplicateConfiguration # Cluster level admin privileges
       database:
         readonly:
           privileges: ShowCollections,DescribeDatabase # Database level readonly privileges
@@ -1001,7 +988,7 @@ common:
     internaltlsEnabled: false
     tlsMode: 0
   session:
-    ttl: 10 # ttl value when session granting a lease to register service
+    ttl: 30 # ttl value when session granting a lease to register service
     retryTimes: 30 # retry times when session sending etcd requests
   locks:
     metrics:
@@ -1036,11 +1023,11 @@ common:
   sync:
     taskPoolReleaseTimeoutSeconds: 60 # The maximum time to wait for the task to finish and release resources in the pool
   enabledOptimizeExpr: true # Indicates whether to enable optimize expr
-  enabledJSONKeyStats: false # Indicates sealedsegment whether to enable JSON key stats
-  enabledGrowingSegmentJSONKeyStats: false # Indicates growingsegment whether to enable JSON key stats
+  enabledJSONShredding: false # Indicates sealedsegment whether to enable JSON key stats
+  enabledGrowingSegmentJSONShredding: false # Indicates growingsegment whether to enable JSON key stats
   enableConfigParamTypeCheck: true # Indicates whether to enable config param type check
   enablePosixMode: false # Specifies whether to run in POSIX mode for enhanced file system compatibility
-  UsingJSONStatsForQuery: true # Indicates whether to use json stats when query
+  usingJSONShreddingForQuery: true # Indicates whether to use json stats when query
   clusterID: 0 # cluster id
 
 # QuotaConfig, configurations of Milvus quota and limits.
@@ -1092,7 +1079,7 @@ quotaAndLimits:
     db:
       max: -1 # qps of db level, default no limit, rate for CreateIndex, DropIndex
   flushRate:
-    enabled: true # Whether flush request throttling is enabled.
+    enabled: false # Whether flush request throttling is enabled.
     # Maximum number of flush requests per second.
     # Setting this item to 10 indicates that Milvus processes no more than 10 flush requests per second.
     # To use this setting, set quotaAndLimits.flushRate.enabled to true at the same time.
@@ -1223,6 +1210,7 @@ quotaAndLimits:
     diskProtection:
       enabled: true # When the total file size of object storage is greater than `diskQuota`, all dml requests would be rejected;
       diskQuota: -1 # MB, (0, +inf), default no limit
+      loadedDiskQuota: -1 # MB, (0, +inf), default no limit
       diskQuotaPerDB: -1 # MB, (0, +inf), default no limit
       diskQuotaPerCollection: -1 # MB, (0, +inf), default no limit
       diskQuotaPerPartition: -1 # MB, (0, +inf), default no limit
@@ -1325,7 +1313,7 @@ streaming:
         # it also determine the depth of depth first search method that is used to find the best balance result, 3 by default
         rebalanceMaxStep: 3
   walBroadcaster:
-    concurrencyRatio: 1 # The concurrency ratio based on number of CPU for wal broadcaster, 1 by default.
+    concurrencyRatio: 4 # The concurrency ratio based on number of CPU for wal broadcaster, 4 by default.
   txn:
     defaultKeepaliveTimeout: 10s # The default keepalive timeout for wal txn, 10s by default
   walWriteAheadBuffer:
@@ -1340,29 +1328,47 @@ streaming:
     # The threshold of slow log, 1s by default. 
     # If the wal implementation is woodpecker, the minimum threshold is 3s
     appendSlowThreshold: 1s
+  
   flush:
-    # The threshold of memory usage for one streaming node,
-    # If the memory usage is higher than this threshold, the node will try to trigger flush action to decrease the total of growing segment until growingSegmentBytesLwmThreshold,
-    # the value should be in the range of (0, 1), 0.6 by default.
-    memoryThreshold: 0.6
-    # The high watermark of total growing segment bytes for one streaming node,
-    # If the total bytes of growing segment is greater than this threshold,
-    # a flush process will be triggered to decrease total bytes of growing segment until growingSegmentBytesLwmThreshold, 0.2 by default
-    growingSegmentBytesHwmThreshold: 0.2
-    # The lower watermark of total growing segment bytes for one streaming node,
-    # growing segment flush process will try to flush some growing segment into sealed 
-    # until the total bytes of growing segment is less than this threshold, 0.1 by default.
-    growingSegmentBytesLwmThreshold: 0.1
+    # set very high so memoryThreshold is basically never reached
+    memoryThreshold: 0.99
+
+    # set high/low almost equal and near 1 so bytes never hit HWM
+    growingSegmentBytesHwmThreshold: 0.99
+    growingSegmentBytesLwmThreshold: 0.98
+
     l0:
-      # The max lifetime of l0 segment, 10 minutes by default.
-      # If the l0 segment is older than this time, it will be flushed.
-      maxLifetime: 10m
-      # The max row num of l0 segment, 500000 by default.
-      # If the row num of l0 segment is greater than this num, it will be flushed.
-      maxRowNum: 500000
-      # The max size of l0 segment, 32m by default.
-      # If the binary size of l0 segment is greater than this size, it will be flushed.
-      maxSize: 32m
+      # make lifetime huge so time-based flush never happens
+      maxLifetime: 168h         # 7 days (or more)
+      # make rowNum huge so row-based flush never happens
+      maxRowNum: 1000000000     # 1e9
+      # make size huge so size-based flush never happens
+      maxSize: 1024g            # 1 TB (or something absurd)
+
+
+  # flush:
+  #   # The threshold of memory usage for one streaming node,
+  #   # If the memory usage is higher than this threshold, the node will try to trigger flush action to decrease the total of growing segment until growingSegmentBytesLwmThreshold,
+  #   # the value should be in the range of (0, 1), 0.6 by default.
+  #   memoryThreshold: 0.6
+  #   # The high watermark of total growing segment bytes for one streaming node,
+  #   # If the total bytes of growing segment is greater than this threshold,
+  #   # a flush process will be triggered to decrease total bytes of growing segment until growingSegmentBytesLwmThreshold, 0.2 by default
+  #   growingSegmentBytesHwmThreshold: 0.2
+  #   # The lower watermark of total growing segment bytes for one streaming node,
+  #   # growing segment flush process will try to flush some growing segment into sealed 
+  #   # until the total bytes of growing segment is less than this threshold, 0.1 by default.
+  #   growingSegmentBytesLwmThreshold: 0.1
+  #   l0:
+  #     # The max lifetime of l0 segment, 10 minutes by default.
+  #     # If the l0 segment is older than this time, it will be flushed.
+  #     maxLifetime: 10m
+  #     # The max row num of l0 segment, 500000 by default.
+  #     # If the row num of l0 segment is greater than this num, it will be flushed.
+  #     maxRowNum: 500000
+  #     # The max size of l0 segment, 32m by default.
+  #     # If the binary size of l0 segment is greater than this size, it will be flushed.
+  #     maxSize: 32m
   walRecovery:
     # The interval of persist recovery info, 10s by default. 
     # Every the interval, the recovery info of wal will try to persist, and the checkpoint of wal can be advanced.
@@ -1393,6 +1399,13 @@ streaming:
 # Any configuration related to the knowhere vector search engine
 knowhere:
   enable: true # When enable this configuration, the index parameters defined following will be automatically populated as index parameters, without requiring user input.
+  AISAQ:
+    build:
+      max_degree: 56 # Maximum degree of the Vamana graph
+      pq_code_budget_gb_ratio: 0.125 # Size limit on the PQ code (compared with raw data)
+      search_list_size: 100 # Size of the candidate list during building graph
+    search:
+      beam_width_ratio: 4 # Ratio between the maximum number of IO requests per search iteration and CPU number
   DISKANN:
     build:
       max_degree: 56 # Maximum degree of the Vamana graph
