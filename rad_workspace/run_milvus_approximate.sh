@@ -286,7 +286,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     --outdir "$OUT_SERIES" \
     --id_col "$ID_COL" \
     --text_col "$TEXT_COL" \
-    --corpus_cache "$OUT_SERIES/cache/corpusk.parquet" \
+    --corpus_cache "$OUT_SERIES/cache/corpus.parquet" \
     --num_workers "$NUM_WORKERS" \
     --jaccard_threshold "$JACCARD_THR" \
     | tee "$LOG_DIR/02_rad_data_dedup_corpus_corpus.log"
@@ -297,7 +297,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
     --outdir "$OUT_SERIES" \
     --id_col "$ID_COL" \
     --text_col "$TEXT_COL" \
-    --corpus_cache "$OUT_SERIES/cache/queriesk.parquet" \
+    --corpus_cache "$OUT_SERIES/cache/queries.parquet" \
     --num_workers "$NUM_WORKERS" \
     --jaccard_threshold "$JACCARD_THR" \
     | tee "$LOG_DIR/02A_rad_data_dedup_corpus_queries.log"
@@ -320,7 +320,7 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
       BUILD_ARGS=(
         python rad_build_index_milvus_apprx.py
         --outdir "$OUT_SERIES"                     # indices under $OUT/indices/<SERIES>/<metric>/M<M>
-        --main_parquet "$OUT_SERIES/cache/corpusk_dedup.parquet"
+        --main_parquet "$OUT_SERIES/cache/corpus_dedup.parquet"
         --id_col "$ID_COL" --mh_batch "$MH_BATCH"  --threads "$THREADS" --text_col "$TEXT_COL"
       )
 
@@ -354,9 +354,9 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
   echo "== Step 3: rad_prepare_ground_truth ($SERIES) =="
   python rad_prepare_ground_truth.py \
     --outdir "$OUT_SERIES" \
-    --queries_parquet "$OUT_SERIES/cache/queriesk_dedup.parquet" \
-    --corpus_parquet  "$OUT_SERIES/cache/corpusk_dedup.parquet" \
-    --corpus_raw_parquet  "$OUT_SERIES/cache/corpusk.parquet" \
+    --queries_parquet "$OUT_SERIES/cache/queries_dedup.parquet" \
+    --corpus_parquet  "$OUT_SERIES/cache/corpus_dedup.parquet" \
+    --corpus_raw_parquet  "$OUT_SERIES/cache/corpus.parquet" \
     --id_col "$ID_COL" --text_col "$TEXT_COL" \
     --gt_k 1 \
     ${PREP_PREV_DIR_FILES:+--prev_index_dir} ${PREP_PREV_DIR_FILES:+"$PREP_PREV_DIR_FILES"} \
@@ -373,8 +373,8 @@ for ((idx=0; idx<${#SERIES_ARR[@]}; idx++)); do
       echo "== rad_query_index_milvus_apprx.py : Bitmap→${metric^} (M=$M, $SERIES) =="
       python rad_query_index_milvus_apprx.py \
         --outdir "$OUT_SERIES" \
-        --queries_parquet "$OUT_SERIES/cache/queriesk.parquet" \
-        --corpus_parquet "$OUT_SERIES/cache/corpusk_dedup.parquet" \
+        --queries_parquet "$OUT_SERIES/cache/queries.parquet" \
+        --corpus_parquet "$OUT_SERIES/cache/corpus_dedup.parquet" \
         --id_col "$ID_COL" --text_col "$TEXT_COL" \
         --series_tag "M${M}_${metric}" \
         --gt_json "$OUT_SERIES/ground_truth/gt_top1_${SERIES}.json" \

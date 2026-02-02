@@ -211,18 +211,7 @@ def parallel_minhash_fast_milvus(
     workers = max(1, int(n_proc) if n_proc is not None else 1)
     workers = min(workers, N)
 
-    # # Build contiguous ranges that cover all rows
-    # ranges: List[Tuple[int, int]] = []
-    # base = N // workers
-    # rem  = N % workers
-    # start = 0
-    # for w in range(workers):
-    #     end = start + base + (1 if w < rem else 0)
-    #     if start >= end:
-    #         break
-    #     ranges.append((start, end))
-    #     start = end
-    # num_batches = len(ranges)
+
 
     # Build index ranges for tasks (avoid pickling large arrays)
     bs = max(1, batch_size)
@@ -381,19 +370,6 @@ def main():
     if args.insert_limit and args.insert_limit > 0:
         ldf = ldf.limit(args.insert_limit)
     
-    # 4) Shuffle rows lazily
-    # ldf = ldf.shuffle(seed=42)
-    # 3) Row-level shuffle (lazy, preserves doc_id↔contents pairing)
-    # RANDOM_COL = "_rand"
-
-    # ldf = (
-    #     ldf
-    #     .with_row_count("row_idx")  # deterministic row index
-    #     .with_columns(pl.col("row_idx").hash(seed=42).alias(RANDOM_COL))
-    #     .sort(RANDOM_COL)           # sort by hashed index ⇒ pseudo-random row order
-    #     .drop(["row_idx", RANDOM_COL])
-    # )
-
 
 
     total_rows = ldf.select(pl.len()).collect(engine="streaming").item()
